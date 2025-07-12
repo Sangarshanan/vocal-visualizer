@@ -31,8 +31,8 @@ const Index = () => {
         <div className="mt-16 text-center">
           <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-2xl p-6 max-w-2xl mx-auto">
             <p className="text-gray-400 text-sm leading-relaxed">
-              <span className="text-purple-400 font-medium">🔬 Made with Vite, Web Audio API & Vibes</span>
-              <span className="text-cyan-400">✨</span>
+              <span className="text-purple-400 font-medium">🔬 Made with Vite, Web Audio API & Vibes ✨ </span>
+              <a href="https://github.com/Sangarshanan/vocal-visualizer"><span className="text-cyan-400"> click here for the code 🔗</span></a>
             </p>
           </div>
         </div>
