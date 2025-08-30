@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useReactMediaRecorder } from 'react-media-recorder';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, Play, Square } from 'lucide-react';
+import { Mic, MicOff, Play, Square, Pause } from 'lucide-react';
 import { FrequencyChart } from './FrequencyChart';
 import { Spectrogram } from './Spectrogram';
 import { VoiceAnalysis } from './VoiceAnalysis';
@@ -16,6 +16,8 @@ export const AudioAnalyzer: React.FC<AudioAnalyzerProps> = () => {
   const [spectrogramData, setSpectrogramData] = useState<number[][]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -23,6 +25,7 @@ export const AudioAnalyzer: React.FC<AudioAnalyzerProps> = () => {
   const animationFrameRef = useRef<number | null>(null);
   const realtimeSpectrogramRef = useRef<number[][]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const {
     status,
