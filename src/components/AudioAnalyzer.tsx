@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useReactMediaRecorder } from 'react-media-recorder';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mic, MicOff, Play, Square } from 'lucide-react';
@@ -10,20 +11,68 @@ import { toast } from 'sonner';
 interface AudioAnalyzerProps {}
 
 export const AudioAnalyzer: React.FC<AudioAnalyzerProps> = () => {
-  const [isRecording, setIsRecording] = useState(false);
   const [audioData, setAudioData] = useState<Float32Array | null>(null);
   const [frequencyData, setFrequencyData] = useState<number[]>([]);
   const [spectrogramData, setSpectrogramData] = useState<number[][]>([]);
-  const [audioUrl, setAudioUrl] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const recordingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const realtimeSpectrogramRef = useRef<number[][]>([]);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+
+  const {
+    status,
+    startRecording: startMediaRecording,
+    stopRecording: stopMediaRecording,
+    mediaBlobUrl,
+    clearBlobUrl,
+  } = useReactMediaRecorder({
+    audio: {
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      sampleRate: 44100
+    },
+    onStart: () => {
+      setRecordingTime(0);
+      realtimeSpectrogramRef.current = [];
+      setSpectrogramData([]);
+      
+      // Start recording timer
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+      
+      toast.success('🎤 Recording started! Drop those vocals!');
+    },
+    onStop: async (blobUrl, blob) => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      
+      // Stop all tracks
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+        mediaStreamRef.current = null;
+      }
+      
+      // Process the recorded audio for final spectrogram
+      if (blob) {
+        await processAudioBlob(blob);
+      }
+    },
+    askPermissionOnMount: true
+  });
+
+  const isRecording = status === 'recording';
 
   useEffect(() => {
     return () => {
@@ -41,6 +90,7 @@ export const AudioAnalyzer: React.FC<AudioAnalyzerProps> = () => {
 
   const startRecording = useCallback(async () => {
     try {
+      // Get user media for real-time analysis
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: false,
@@ -49,6 +99,8 @@ export const AudioAnalyzer: React.FC<AudioAnalyzerProps> = () => {
           sampleRate: 44100
         } 
       });
+      
+      mediaStreamRef.current = stream;
 
       // Create audio context for real-time analysis
       audioContextRef.current = new AudioContext({ sampleRate: 44100 });
@@ -58,68 +110,20 @@ export const AudioAnalyzer: React.FC<AudioAnalyzerProps> = () => {
       analyserRef.current.smoothingTimeConstant = 0.8;
       source.connect(analyserRef.current);
 
-      // Set up MediaRecorder for audio capture
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm'
-      });
-      mediaRecorderRef.current = mediaRecorder;
-
-      const chunks: BlobPart[] = [];
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        setAudioUrl(url);
-        
-        // Process the recorded audio for final spectrogram
-        await processAudioBlob(blob);
-        
-        // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-      
-      // Reset spectrogram data
-      realtimeSpectrogramRef.current = [];
-      setSpectrogramData([]);
-      
-      // Start recording timer
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-
       // Start real-time frequency analysis
       updateFrequencyData();
       
-      toast.success('🎤 Recording started! Drop those vocals!');
+      // Start react-media-recorder recording
+      startMediaRecording();
     } catch (error) {
       console.error('Error starting recording:', error);
       toast.error('Oops! Mic check failed 🎭 Please check permissions');
     }
-  }, []);
+  }, [startMediaRecording]);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
-      
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    }
-  }, [isRecording]);
+    stopMediaRecording();
+  }, [stopMediaRecording]);
 
   const updateFrequencyData = useCallback(() => {
     if (analyserRef.current && isRecording) {
@@ -312,13 +316,13 @@ export const AudioAnalyzer: React.FC<AudioAnalyzerProps> = () => {
                 )}
               </Button>
               
-              {audioUrl && (
+              {mediaBlobUrl && (
                 <Button
                   variant="outline"
                   size="lg"
                   className="border-cyan-500/50 text-cyan-300 hover:bg-cyan-500/10 hover:border-cyan-400 transition-all duration-300 transform hover:scale-105 px-6 py-4"
                   onClick={() => {
-                    const audio = new Audio(audioUrl);
+                    const audio = new Audio(mediaBlobUrl);
                     audio.play();
                     toast.success('🔊 Playing back your masterpiece!');
                   }}
